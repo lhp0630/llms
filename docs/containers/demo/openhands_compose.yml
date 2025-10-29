@@ -1,0 +1,32 @@
+services:
+  openhands:
+    image: ghcr.io/openhands/agent-canvas:latest
+    container_name: openhands-app
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - SANDBOX_USER_ID=1000 # 建议匹配宿主机用户的 UID，防止出现文件权限问题
+    volumes:
+      - ~/.openhands:/home/openhands/.openhands  # 持久化 OpenHands 的配置文件和数据
+      - ~/projects:/projects                     # 项目目录
+      
+      # 挂载 Docker 守护进程，允许 OpenHands 创建安全的沙盒容器
+      # - /var/run/docker.sock:/var/run/docker.sock
+
+      # Podman 的替代方案
+      # systemctl --user enable --now podman.socket  # 启动当前用户的 podman socket
+      # loginctl enable-linger $USER                 # 允许当前用户在注销登录后，Podman 服务依然在后台常驻
+      # export PODMAN_SOCK=${XDG_RUNTIME_DIR%/}/podman/podman.sock
+      - ${PODMAN_SOCK}:/var/run/docker.sock:Z
+      
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          memory: 1G
+
+networks:
+  default:

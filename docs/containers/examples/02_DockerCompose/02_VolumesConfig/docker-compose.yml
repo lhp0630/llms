@@ -1,0 +1,9 @@
+services:
+  minio:
+    image: docker.io/minio/minio:latest
+    command: minio server /minio_data --console-address ":9001"
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - /minio:/minio_data
