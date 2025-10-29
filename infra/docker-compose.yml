@@ -1,0 +1,15 @@
+name: intelligence-platform
+include:
+  - path: elasticsearch_include.yml
+  - path: milvus_include.yml
+  - path: nebula_include.yml
+
+services:
+  server:
+    image: docker.io/library/busybox:latest
+    command: echo "Hello, World!" && sleep 3600
+
+networks:
+  db-net:
+    name: shared_database_network
+    driver: bridge

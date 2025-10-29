@@ -1,0 +1,75 @@
+services:
+  elasticsearch0:
+    container_name: elasticsearch0
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.1
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms4g -Xmx4g # JVM 堆内存配置
+      - bootstrap.memory_lock=true # 锁定物理内存，禁止 swap
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s http://localhost:9200/_cluster/health | grep -q
+            '\"status\":\"green\"\\|\"status\":\"yellow\"'",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    ports:
+      # - 9200:9200
+      - 19200:9200
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65535
+        hard: 65535
+    deploy:
+      resources:
+        limits:
+          memory: 8G # 物理内存限制应大于 JVM 堆内存大小
+        reservations:
+          memory: 4G
+    # networks:
+    #   - elastic-net
+    networks:
+      - db-net
+    restart: always
+    profiles: [ "es" ]
+
+  kibana:
+    container_name: kibana
+    image: docker.elastic.co/kibana/kibana:9.3.1
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch0:9200
+      - I18N_LOCALE=zh-CN # 设置为中文界面
+    ports:
+      # - 5601:5601
+      - 15601:5601
+    depends_on:
+      elasticsearch0:
+        condition: service_healthy # 等待 ES 健康后再启动
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    # networks:
+    #   - elastic-net
+    networks:
+      - db-net
+    restart: always
+    profiles: [ "es" ]
+
+volumes:
+  es-data:
+    driver: local
+
+# networks:
+#   elastic-net:
+#     name: elastic_network
+#     driver: bridge

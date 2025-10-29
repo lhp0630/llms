@@ -1,0 +1,214 @@
+services:
+  metad0:
+    container_name: nebula-metad0
+    image: docker.io/vesoft/nebula-metad:v3.8.0
+    environment:
+      USER: root
+    command:
+      - --meta_server_addrs=metad0:9559
+      - --local_ip=metad0
+      - --ws_ip=metad0
+      - --port=9559
+      - --ws_http_port=19559
+      - --data_path=/data/meta
+      - --log_dir=/logs
+      - --v=0
+      - --minloglevel=0
+    healthcheck:
+      test: [ "CMD", "curl", "-sf", "http://metad0:19559/status" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    # ports:
+    #   - 9559:9559
+    #   - 19559:19559
+    #   - 19560
+    volumes:
+      - ${STORAGE_ROOT-./storage}/nebula/metad/data/meta0:/data/meta
+      - ${STORAGE_ROOT-./storage}/nebula/metad/logs/meta0:/logs
+    restart: always
+    cap_add:
+      - SYS_PTRACE
+    deploy:
+      resources:
+        limits:
+          # cpus: "1.0"
+          memory: 1G
+        reservations:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    # networks:
+    #   nebula-net:
+    #     ipv4_address: 172.20.0.10
+    networks:
+      - db-net
+    hostname: metad0
+    profiles: [ "nebula" ]
+
+  storaged0:
+    container_name: nebula-storaged0
+    image: docker.io/vesoft/nebula-storaged:v3.8.0
+    environment:
+      USER: root
+      TZ: "${TZ-UTC}"
+    command:
+      - --meta_server_addrs=metad0:9559
+      - --local_ip=storaged0
+      - --ws_ip=storaged0
+      - --port=9779
+      - --ws_http_port=19779
+      - --data_path=/data/storage
+      - --log_dir=/logs
+      - --v=0
+      - --minloglevel=0
+    depends_on:
+      metad0:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-sf", "http://storaged0:19779/status" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    # ports:
+    #   - 9779:9779
+    #   - 19779:19779
+    #   - 19780
+    volumes:
+      - ${STORAGE_ROOT-./storage}/nebula/storaged/data/storage0:/data/storage
+      - ${STORAGE_ROOT-./storage}/nebula/storaged/logs/storage0:/logs
+    restart: always
+    cap_add:
+      - SYS_PTRACE
+    deploy:
+      resources:
+        limits:
+          # cpus: "4.0"
+          memory: 8G # 占总内存的 50%，假设宿主机是 16G 内存
+        reservations:
+          memory: 4G
+    ulimits:
+      core: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    # networks:
+    #   nebula-net:
+    #     ipv4_address: 172.20.0.20
+    networks:
+      - db-net
+    hostname: storaged0
+    profiles: [ "nebula" ]
+
+  graphd:
+    container_name: nebula-graphd
+    image: docker.io/vesoft/nebula-graphd:v3.8.0
+    environment:
+      USER: root
+      TZ: "${TZ-UTC}"
+    command:
+      - --meta_server_addrs=metad0:9559
+      - --port=9669
+      - --local_ip=graphd
+      - --ws_ip=graphd
+      - --ws_http_port=19669
+      - --log_dir=/logs
+      - --v=0
+      - --minloglevel=0
+    depends_on:
+      - storaged0
+    healthcheck:
+      test: [ "CMD", "curl", "-sf", "http://graphd:19669/status" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    ports:
+      - 9669:9669 # 查询端口
+      # - 19669:9669
+      # - 19669:19669 # 监控端口
+    volumes:
+      - ${STORAGE_ROOT-./storage}/nebula/graphd/logs/graph:/logs
+    restart: always
+    cap_add:
+      - SYS_PTRACE
+    deploy:
+      resources:
+        limits:
+          # cpus: "2.0"
+          memory: 4G
+        reservations:
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    # networks:
+    #   nebula-net:
+    #     ipv4_address: 172.20.0.30
+    networks:
+      - db-net
+    hostname: graphd
+    profiles: [ "nebula" ]
+
+  nebula-console:
+    container_name: nebula-console
+    image: docker.io/vesoft/nebula-console:v3.8.0
+    entrypoint: ""
+    command:
+      - sh
+      - -c
+      - |
+        for i in `seq 1 60`;do
+          var=`nebula-console -addr graphd -port 9669 -u root -p nebula -e 'ADD HOSTS "storaged0":9779'`;
+          if [[ $$? == 0 ]];then
+            break;
+          fi;
+          sleep 1;
+          echo "retry to add hosts.";
+        done && tail -f /dev/null;
+    depends_on:
+      - graphd
+    restart: always
+    profiles: [ "nebula" ]
+
+  graph-studio:
+    container_name: nebula-graph-studio
+    image: docker.io/vesoft/nebula-graph-studio:v3.8.0
+    environment:
+      USER: root
+    ports:
+      - 7001:7001
+      # - 17001:7001
+    depends_on:
+      - graphd
+    restart: always
+    deploy:
+      resources:
+        limits:
+          # cpus: "0.5"
+          memory: 512M
+    # networks:
+    #   - nebula-net
+    networks:
+      - db-net
+    profiles: [ "nebula" ]
+
+# networks:
+#   nebula-net:
+#     name: nebula_network
+#     driver: bridge
+#     ipam:
+#       config:
+#         - subnet: 172.20.0.0/16 # 定义独立的私有网段
